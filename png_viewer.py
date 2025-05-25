@@ -11,7 +11,7 @@ from PIL import Image
 from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtGui import QPixmap, QImage, QPainter, QFont, QTransform
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QLabel, QVBoxLayout,
-                            QWidget, QTextEdit, QHBoxLayout, QPushButton)
+                            QWidget, QTextEdit, QHBoxLayout, QPushButton, QFileDialog, QMessageBox)
 
 
 class ImageFileManager:
@@ -25,12 +25,21 @@ class ImageFileManager:
 
     def _load_png_files(self) -> None:
         """PNGファイルの一覧を読み込む"""
+        backup_target_path = self.target_path
         if self.target_path.is_file():
+            # ファイルが指定された場合、親ディレクトリを対象とする
             self.target_path = self.target_path.parent
 
         self.png_files = sorted(
             [f for f in self.target_path.glob("**/*.png")
              if f.is_file()])
+
+        # ファイルが指定された場合、そのファイルを現在のファイルとして設定
+        if backup_target_path.is_file():
+            for i, file in enumerate(self.png_files):
+                if file == backup_target_path:
+                    self.current_index = i
+                    break
 
     def update_file_list(self) -> None:
         """ファイルリストを更新する"""
@@ -171,7 +180,7 @@ class RotatedButton(QPushButton):
     """90度回転したボタンクラス"""
     def __init__(self, text: str, parent=None):
         super().__init__(text, parent)
-        self.setFixedSize(25, 100)  # 幅を40から27に変更（約2/3）
+        self.setFixedSize(27, 100)  # 幅を2/3に縮小
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -278,7 +287,7 @@ class ImageViewer(QMainWindow):
                 pil_image.width * len(pil_image.mode),
                 format
             )
-            
+
             # QPixmapに変換
             pixmap = QPixmap.fromImage(qimage)
             scaled_pixmap = pixmap.scaled(
@@ -352,6 +361,11 @@ def main() -> None:
     target_path = Path(sys.argv[1])
     if not target_path.exists():
         print("指定されたパスが存在しません。")
+        sys.exit(1)
+
+    # PNGファイルが指定された場合、ファイルの存在を確認
+    if target_path.is_file() and target_path.suffix.lower() != '.png':
+        print("指定されたファイルがPNGファイルではありません。")
         sys.exit(1)
 
     app = QApplication(sys.argv)
