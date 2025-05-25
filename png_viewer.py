@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import os
 import sys
 import webbrowser
 from pathlib import Path
@@ -9,10 +8,10 @@ from typing import List, Optional
 from send2trash import send2trash
 
 from PIL import Image
-from PyQt6.QtCore import Qt, QUrl
-from PyQt6.QtGui import QPixmap, QImage, QPainter, QFont, QTransform
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QPixmap, QImage, QPainter, QFont, QColor
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QLabel, QVBoxLayout,
-                            QWidget, QTextEdit, QHBoxLayout, QPushButton, QFileDialog, QMessageBox)
+                            QWidget, QTextEdit, QHBoxLayout, QPushButton, QMessageBox)
 
 
 class ImageFileManager:
@@ -62,6 +61,8 @@ class ImageFileManager:
         return self.png_files[self.current_index]
 
     def next_file(self) -> Optional[Path]:
+        self.update_file_list()
+
         """次の画像ファイルを取得"""
         if not self.png_files:
             return None
@@ -69,6 +70,8 @@ class ImageFileManager:
         return self.get_current_file()
 
     def previous_file(self) -> Optional[Path]:
+        self.update_file_list()
+
         """前の画像ファイルを取得"""
         if not self.png_files:
             return None
@@ -181,14 +184,33 @@ class RotatedButton(QPushButton):
     """90度回転したボタンクラス"""
     def __init__(self, text: str, parent=None):
         super().__init__(text, parent)
-        self.setFixedSize(27, 100)  # 幅を2/3に縮小
+        self.setFixedSize(27, 100)
+        self.setStyleSheet("""
+            QPushButton {
+                background-color: #f44336;
+                color: white;
+                border: none;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #d32f2f;
+            }
+            QPushButton:pressed {
+                background-color: #b71c1c;
+            }
+        """)
 
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
         # ボタンの背景を描画
-        painter.fillRect(self.rect(), self.palette().button())
+        if self.isDown():
+            painter.fillRect(self.rect(), QColor("#b71c1c"))
+        elif self.underMouse():
+            painter.fillRect(self.rect(), QColor("#d32f2f"))
+        else:
+            painter.fillRect(self.rect(), QColor("#f44336"))
         
         # テキストを90度回転して描画
         painter.translate(self.width() / 2, self.height() / 2)
@@ -198,9 +220,11 @@ class RotatedButton(QPushButton):
         # フォントを設定
         font = QFont()
         font.setPointSize(10)
+        font.setBold(True)
         painter.setFont(font)
         
         # テキストを中央揃えで描画
+        painter.setPen(QColor("white"))
         painter.drawText(0, 0, self.height(), self.width(),
                         Qt.AlignmentFlag.AlignCenter, self.text())
 
@@ -217,47 +241,85 @@ class ImageViewer(QMainWindow):
     def _setup_ui(self) -> None:
         """UIの初期設定"""
         self.setWindowTitle("PNG Viewer")
-        self.setGeometry(100, 100, 1200, 600)  # ウィンドウ幅を広げる
+        self.setGeometry(100, 100, 1200, 600)
+
+        # アプリケーション全体のスタイルを設定
+        self.setStyleSheet("""
+            QMainWindow {
+                background-color: #f5f5f5;
+            }
+            QTextEdit {
+                background-color: white;
+                color: #333333;
+                border: 1px solid #e0e0e0;
+                border-radius: 4px;
+                padding: 8px;
+                font-family: 'Segoe UI', sans-serif;
+                font-size: 12px;
+                line-height: 1.5;
+            }
+            QLabel {
+                background-color: white;
+                border: 1px solid #e0e0e0;
+                border-radius: 4px;
+            }
+        """)
 
         # メインウィジェットとレイアウトの設定
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
-        layout = QHBoxLayout(main_widget)  # 水平レイアウトに変更
+        layout = QHBoxLayout(main_widget)
+        layout.setSpacing(16)  # ウィジェット間の間隔を設定
+        layout.setContentsMargins(16, 16, 16, 16)  # マージンを設定
 
         # 画像表示用ラベル
         self.image_label = QLabel()
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.image_label.setMinimumWidth(600)  # 最小幅を設定
-        self.image_label.mousePressEvent = self._handle_image_click  # クリックイベントを設定
+        self.image_label.setMinimumWidth(600)
+        self.image_label.setStyleSheet("""
+            QLabel {
+                background-color: white;
+                border: 1px solid #e0e0e0;
+                border-radius: 4px;
+            }
+        """)
+        self.image_label.mousePressEvent = self._handle_image_click
         layout.addWidget(self.image_label)
 
         # 中央のボタン配置用レイアウト
         center_layout = QVBoxLayout()
+        center_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
-        # 削除ボタンの作成（回転ボタンを使用）
+        # 削除ボタンの作成
         delete_button = RotatedButton("Delete")
         delete_button.clicked.connect(self._delete_current_image)
         center_layout.addWidget(delete_button)
         
-        # 中央レイアウトをメインレイアウトに追加
         layout.addLayout(center_layout)
 
         # メタデータ表示用テキストエリア
         self.metadata_text = QTextEdit()
         self.metadata_text.setReadOnly(True)
-        self.metadata_text.setContextMenuPolicy(
-            Qt.ContextMenuPolicy.CustomContextMenu)
-        self.metadata_text.customContextMenuRequested.connect(
-            self._handle_context_menu)
-        self.metadata_text.setMinimumWidth(400)  # 最小幅を設定
-        # キーイベントを無視するように設定
+        self.metadata_text.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.metadata_text.customContextMenuRequested.connect(self._handle_context_menu)
+        self.metadata_text.setMinimumWidth(400)
+        self.metadata_text.setStyleSheet("""
+            QTextEdit {
+                background-color: white;
+                color: #333333;
+                border: 1px solid #e0e0e0;
+                border-radius: 4px;
+                padding: 8px;
+                font-family: 'Segoe UI', sans-serif;
+                font-size: 12px;
+                line-height: 1.5;
+            }
+        """)
         self.metadata_text.installEventFilter(self)
         layout.addWidget(self.metadata_text)
 
     def _show_current_image(self) -> None:
         """現在の画像を表示"""
-        # ファイルリストを更新
-        self.file_manager.update_file_list()
         
         current_file = self.file_manager.get_current_file()
         if not current_file:
@@ -318,18 +380,10 @@ class ImageViewer(QMainWindow):
         if not current_file:
             return
 
-        reply = QMessageBox.question(
-            self,
-            "確認",
-            f"ファイル {current_file.name} をごみ箱に移動してもよろしいですか？",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-
-        if reply == QMessageBox.StandardButton.Yes:
-            if self.file_manager.delete_current_file():
-                self._show_current_image()
-            else:
-                self.close()  # ファイルがなくなった場合はアプリを終了
+        if self.file_manager.delete_current_file():
+            self._show_current_image()
+        else:
+            self.close()  # ファイルがなくなった場合はアプリを終了
 
     def keyPressEvent(self, event) -> None:
         """キー入力の処理"""
