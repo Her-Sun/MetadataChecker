@@ -6,6 +6,7 @@ import sys
 import webbrowser
 from pathlib import Path
 from typing import List, Optional
+from send2trash import send2trash
 
 from PIL import Image
 from PyQt6.QtCore import Qt, QUrl
@@ -75,13 +76,13 @@ class ImageFileManager:
         return self.get_current_file()
 
     def delete_current_file(self) -> Optional[Path]:
-        """現在のファイルを削除し、次のファイルを返す"""
+        """現在のファイルをごみ箱に移動し、次のファイルを返す"""
         if not self.png_files:
             return None
 
         current_file = self.png_files[self.current_index]
         try:
-            current_file.unlink()  # ファイルを削除
+            send2trash(str(current_file))  # ファイルをごみ箱に移動
             self.png_files.pop(self.current_index)  # リストから削除
             
             # インデックスの調整
@@ -92,7 +93,7 @@ class ImageFileManager:
             
             return self.get_current_file()
         except Exception as e:
-            print(f"ファイルの削除に失敗しました: {e}")
+            print(f"ファイルの移動に失敗しました: {e}")
             return None
 
     def has_files(self) -> bool:
@@ -312,11 +313,23 @@ class ImageViewer(QMainWindow):
                 self._show_current_image()
 
     def _delete_current_image(self) -> None:
-        """現在の画像を削除"""
-        if self.file_manager.delete_current_file():
-            self._show_current_image()
-        else:
-            self.close()  # ファイルがなくなった場合はアプリを終了
+        """現在の画像をごみ箱に移動"""
+        current_file = self.file_manager.get_current_file()
+        if not current_file:
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "確認",
+            f"ファイル {current_file.name} をごみ箱に移動してもよろしいですか？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            if self.file_manager.delete_current_file():
+                self._show_current_image()
+            else:
+                self.close()  # ファイルがなくなった場合はアプリを終了
 
     def keyPressEvent(self, event) -> None:
         """キー入力の処理"""
