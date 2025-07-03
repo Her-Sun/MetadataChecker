@@ -31,7 +31,7 @@ class ImageFileManager:
             self.target_path = self.target_path.parent
 
         self.png_files = sorted(
-            [f for f in self.target_path.glob("**/*.png")
+            [f for f in self.target_path.glob("*.png")
              if f.is_file()])
 
         # ファイルが指定された場合、そのファイルを現在のファイルとして設定
@@ -61,12 +61,21 @@ class ImageFileManager:
         return self.png_files[self.current_index]
 
     def next_file(self) -> Optional[Path]:
-        self.update_file_list()
-
-        """次の画像ファイルを取得"""
+        # 1. 現在のリストの「表示済み部分」を確保
+        shown_list = self.png_files[:self.current_index + 1]
+        # 2. リストを更新
+        self._load_png_files()
         if not self.png_files:
             return None
-        self.current_index = (self.current_index + 1) % len(self.png_files)
+        # 3. shown_listの末尾から一致する画像を探す
+        for path in reversed(shown_list):
+            if path in self.png_files:
+                idx = self.png_files.index(path)
+                next_idx = (idx + 1) % len(self.png_files)
+                self.current_index = next_idx
+                return self.get_current_file()
+        # 4. 一致しなければ先頭を表示
+        self.current_index = 0
         return self.get_current_file()
 
     def previous_file(self) -> Optional[Path]:
@@ -275,7 +284,7 @@ class ImageViewer(QMainWindow):
         # 画像表示用ラベル
         self.image_label = QLabel()
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.image_label.setMinimumWidth(600)
+        self.image_label.setFixedSize(800, 600)  # サイズを固定
         self.image_label.setStyleSheet("""
             QLabel {
                 background-color: white;
@@ -401,12 +410,16 @@ class ImageViewer(QMainWindow):
     def _handle_context_menu(self, position) -> None:
         """右クリックメニューの処理"""
         cursor = self.metadata_text.cursorForPosition(position)
-        cursor.select(cursor.SelectionType.LineUnderCursor)
-        selected_text = cursor.selectedText().strip()
-        
+        selected_text = self.metadata_text.textCursor().selectedText().strip()
         if selected_text:
-            # バックスラッシュとカンマを削除
+            # 範囲選択されている場合はその部分を検索
             search_text = selected_text.replace('\\', '').replace(',', '')
+        else:
+            # 範囲選択されていない場合は行全体を検索
+            cursor.select(cursor.SelectionType.LineUnderCursor)
+            line_text = cursor.selectedText().strip()
+            search_text = line_text.replace('\\', '').replace(',', '')
+        if search_text:
             search_url = f"https://www.google.com/search?q={search_text}&tbm=isch"
             webbrowser.open(search_url)
 
